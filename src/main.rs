@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
-use std::collections::HashMap;
+use comfy_table::{presets, Table};
+use serde::Deserialize;
 
 /// Companion app for coding problems at PixelSam123/codeprobs
 #[derive(Parser, Debug)]
@@ -70,10 +71,19 @@ async fn main() -> Result<()> {
             UserAction::Get => {
                 let response = reqwest::get(format!("{}user", server_url))
                     .await?
-                    .text_with_charset("utf-8")
+                    .json::<Vec<User>>()
                     .await?;
 
-                println!("{:#?}", response);
+                let mut table = Table::new();
+                table.set_header(vec!["Username", "Points"]);
+
+                for user in response {
+                    table
+                        .load_preset(presets::UTF8_BORDERS_ONLY)
+                        .add_row(vec![user.username.to_string(), user.points.to_string()]);
+                }
+
+                println!("{}", table);
             }
             UserAction::Post { name, password } => todo!(),
         },
@@ -89,4 +99,10 @@ async fn main() -> Result<()> {
     };
 
     Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct User {
+    username: String,
+    points: i32,
 }

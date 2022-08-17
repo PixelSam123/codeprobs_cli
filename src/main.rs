@@ -30,10 +30,7 @@ enum UserAction {
     /// Fetch all users in a leaderboard format
     Get,
     /// Sign up a user
-    Post {
-        name: String,
-        password: String,
-    },
+    Post { name: String, password: String },
 }
 
 /// Instructions for obtaining the coding problems
@@ -58,5 +55,21 @@ enum AnswerAction {
 fn main() {
     let args = Args::parse();
 
-    println!("{:#?}", args);
+    println!("START debug info\n{:#?}\nEND debug info\n", args);
+
+    match args.action {
+        Action::User { action } => match action {
+            UserAction::Get => todo!(),
+            UserAction::Post { name, password } => todo!(),
+        },
+        Action::Problem { action } => match action {
+            ProblemAction::Instructions => {
+                println!("Clone the repository at https://github.com/PixelSam123/codeprobs using your favorite Git client.");
+            },
+        },
+        Action::Answer { action } => match action {
+            AnswerAction::Get => todo!(),
+            AnswerAction::Post { filename } => todo!(),
+        },
+    }
 }

@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use color_eyre::eyre::Result;
+use std::collections::HashMap;
 
 /// Companion app for coding problems at PixelSam123/codeprobs
 #[derive(Parser, Debug)]
@@ -52,24 +54,39 @@ enum AnswerAction {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
+    color_eyre::install()?;
+
+    // Make this configurable later
+    let server_url = "http://localhost:5200/api/v1/";
+
     let args = Args::parse();
 
     println!("START debug info\n{:#?}\nEND debug info\n", args);
 
     match args.action {
         Action::User { action } => match action {
-            UserAction::Get => todo!(),
+            UserAction::Get => {
+                let response = reqwest::get(format!("{}user", server_url))
+                    .await?
+                    .text_with_charset("utf-8")
+                    .await?;
+
+                println!("{:#?}", response);
+            }
             UserAction::Post { name, password } => todo!(),
         },
         Action::Problem { action } => match action {
             ProblemAction::Instructions => {
                 println!("Clone the repository at https://github.com/PixelSam123/codeprobs using your favorite Git client.");
-            },
+            }
         },
         Action::Answer { action } => match action {
             AnswerAction::Get => todo!(),
             AnswerAction::Post { filename } => todo!(),
         },
-    }
+    };
+
+    Ok(())
 }

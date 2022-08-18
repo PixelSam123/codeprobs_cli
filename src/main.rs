@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 use comfy_table::{presets, Table};
+use reqwest::StatusCode;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Companion app for coding problems at PixelSam123/codeprobs
 #[derive(Parser, Debug)]
@@ -75,17 +77,32 @@ async fn main() -> Result<()> {
                     .await?;
 
                 let mut table = Table::new();
-                table.set_header(vec!["Username", "Points"]);
+                table.set_header(["Username", "Points"]);
 
                 for user in response {
                     table
                         .load_preset(presets::UTF8_BORDERS_ONLY)
-                        .add_row(vec![user.username.to_string(), user.points.to_string()]);
+                        .add_row([user.username.to_string(), user.points.to_string()]);
                 }
 
                 println!("{}", table);
             }
-            UserAction::Post { name, password } => todo!(),
+            UserAction::Post { name, password } => {
+                let post_body = HashMap::from([("username", name), ("password", password)]);
+
+                let client = reqwest::Client::new();
+                let response = client
+                    .post(format!("{}user", server_url))
+                    .json(&post_body)
+                    .send()
+                    .await?;
+
+                match response.status() {
+                    StatusCode::CREATED => println!("User created successfully"),
+                    StatusCode::OK => println!("User accepted but not created"),
+                    _ => eprintln!("User NOT created! Reason:\n{}", response.text().await?),
+                };
+            }
         },
         Action::Problem { action } => match action {
             ProblemAction::Instructions => {

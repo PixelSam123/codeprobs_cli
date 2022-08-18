@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{bail, Result};
 use comfy_table::{presets, Table};
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 
 /// Companion app for coding problems at PixelSam123/codeprobs
 #[derive(Parser, Debug)]
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
                 match response.status() {
                     StatusCode::CREATED => println!("User created successfully"),
                     StatusCode::OK => println!("User accepted but not created"),
-                    _ => eprintln!("User NOT created! Reason:\n{}", response.text().await?),
+                    _ => bail!("User NOT created! Reason:\n{}", response.text().await?),
                 };
             }
         },

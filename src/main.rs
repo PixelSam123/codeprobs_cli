@@ -3,7 +3,7 @@ use color_eyre::eyre::{bail, Result};
 use comfy_table::{presets, Table};
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, fs};
 
 /// Companion app for coding problems at PixelSam123/codeprobs
 #[derive(Parser, Debug)]
@@ -35,7 +35,11 @@ enum UserAction {
     /// Fetch all users in a leaderboard format
     Get,
     /// Sign up a user
-    Post { name: String, password: String },
+    Post {
+        name: String,
+        /// Please do NOT use a real password!
+        password: String,
+    },
 }
 
 /// Instructions for obtaining the coding problems
@@ -54,6 +58,10 @@ enum AnswerAction {
     Post {
         /// Point to the file that contains the answer
         filename: String,
+        /// Name of the user this answer is posted on the behalf of
+        username: String,
+        /// Password of the user this answer is posted on the behalf of
+        password: String,
     },
 }
 
@@ -66,8 +74,10 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    println!("START debug info\n{:#?}\nEND debug info\n", args);
+    exec_args_with_server_url(args, server_url).await
+}
 
+async fn exec_args_with_server_url(args: Args, server_url: &str) -> Result<()> {
     match args.action {
         Action::User { action } => match action {
             UserAction::Get => {
@@ -77,12 +87,10 @@ async fn main() -> Result<()> {
                     .await?;
 
                 let mut table = Table::new();
-                table.set_header(["Username", "Points"]);
+                table.load_preset(presets::UTF8_BORDERS_ONLY).set_header(["Username", "Points"]);
 
                 for user in response {
-                    table
-                        .load_preset(presets::UTF8_BORDERS_ONLY)
-                        .add_row([user.username.to_string(), user.points.to_string()]);
+                    table.add_row([user.username.to_string(), user.points.to_string()]);
                 }
 
                 println!("{}", table);
@@ -100,26 +108,125 @@ async fn main() -> Result<()> {
                 match response.status() {
                     StatusCode::CREATED => println!("User created successfully"),
                     StatusCode::OK => println!("User accepted but not created"),
-                    _ => bail!("User NOT created! Reason:\n{}", response.text().await?),
+                    _ => println!("User NOT created! Reason:\n{}", response.text().await?),
                 };
             }
         },
         Action::Problem { action } => match action {
             ProblemAction::Instructions => {
                 println!("Clone the repository at https://github.com/PixelSam123/codeprobs using your favorite Git client.");
+                println!("Copy a folder of the problem you want to do to your desired location.");
+                println!("Submission instructions are located in the README.md of a problem.");
             }
         },
         Action::Answer { action } => match action {
-            AnswerAction::Get => todo!(),
-            AnswerAction::Post { filename } => todo!(),
+            AnswerAction::Get => match get_codeprob_info_id() {
+                Ok(codeprob_info_id) => {
+                    let response =
+                        reqwest::get(format!("{}answer/{}", server_url, codeprob_info_id))
+                            .await?
+                            .json::<Vec<Answer>>()
+                            .await?;
+
+                    for answer in response {
+                        println!(
+                            "Answer ID: {}, Username: {}, Upvotes: {}, Downvotes: {}",
+                            answer.id,
+                            answer.user.username,
+                            answer.upvote_count,
+                            answer.downvote_count
+                        );
+                        println!("{}", answer.content);
+                        println!("------");
+                    }
+                }
+                Err(err) => bail!(err),
+            },
+            AnswerAction::Post {
+                filename,
+                username,
+                password,
+            } => match get_codeprob_info_id() {
+                Ok(codeprob_info_id) => match fs::read_to_string(filename) {
+                    Ok(file_string) => {
+                        let post_body = HashMap::from([("language", "js".to_owned()), ("content", file_string)]);
+
+                        let client = reqwest::Client::new();
+                        let response = client
+                            .post(format!("{}answer/{}", server_url, codeprob_info_id))
+                            .basic_auth(username, Some(password))
+                            .json(&post_body)
+                            .send()
+                            .await?;
+
+                        match response.status() {
+                            StatusCode::CREATED => println!("Answer created successfully"),
+                            StatusCode::OK => println!("Answer accepted but not created"),
+                            StatusCode::UNPROCESSABLE_ENTITY => {
+                                let answer_error = response.json::<AnswerError>().await?;
+
+                                println!("Answer NOT created! Reason: {}", answer_error.reason);
+                                if let Some(stdout) = answer_error.stdout {
+                                    println!("Stdout: {}", stdout);
+                                };
+                                if let Some(stderr) = answer_error.stderr {
+                                    println!("Stderr: {}", stderr);
+                                };
+                            }
+                            _ => println!("Answer NOT created! Reason:\n{}", response.text().await?),
+                        }
+                    }
+                    Err(err) => bail!("Cannot read the specified file! Reason:\n{}", err),
+                },
+                Err(err) => bail!(err),
+            },
         },
     };
 
     Ok(())
 }
 
+fn get_codeprob_info_id() -> Result<i32, String> {
+    match fs::read_to_string("./.codeprob_info.json") {
+        Ok(file_string) => match serde_json::from_str::<CodeprobInfo>(&file_string) {
+            Ok(codeprob_info) => Ok(codeprob_info.id),
+            Err(err) => Err(format!("Invalid structure of the contents of .codeprob_info.json! Reason:\n{}", err)),
+        }
+        Err(err) => Err(
+            format!("Cannot read .codeprob_info.json from this directory! Are you in the right folder? Reason:\n{}", err)
+        ),
+    }
+}
+
+/// User information from the server
 #[derive(Deserialize, Debug)]
 struct User {
     username: String,
     points: i32,
+}
+
+/// Answer information from the server
+#[derive(Deserialize, Debug)]
+#[serde(rename_all(deserialize = "camelCase"))]
+struct Answer {
+    id: i32,
+    user: User,
+    language: String,
+    content: String,
+    upvote_count: i32,
+    downvote_count: i32,
+}
+
+/// Answer creation error information from the server
+#[derive(Deserialize, Debug)]
+struct AnswerError {
+    reason: String,
+    stdout: Option<String>,
+    stderr: Option<String>,
+}
+
+/// Structure of file `.codeprob_info.json`
+#[derive(Deserialize, Debug)]
+struct CodeprobInfo {
+    id: i32,
 }

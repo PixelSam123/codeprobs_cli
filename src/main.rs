@@ -63,6 +63,15 @@ enum AnswerAction {
         /// Password of the user this answer is posted on the behalf of
         password: String,
     },
+    /// Delete answer, based on its ID, for the problem in the current directory
+    Delete {
+        /// ID of the answer
+        id: i32,
+        /// Name of the user this answer is deleted on the behalf of
+        username: String,
+        /// Password of the user this answer is deleted on the behalf of
+        password: String,
+    },
 }
 
 #[tokio::main]
@@ -167,10 +176,10 @@ async fn exec_args_with_server_url(args: Args, server_url: &str) -> Result<()> {
 
                                 println!("Answer NOT created! Reason: {}", answer_error.reason);
                                 if let Some(stdout) = answer_error.stdout {
-                                    println!("Stdout: {}", stdout);
+                                    println!("Stdout:\n{}", stdout);
                                 };
                                 if let Some(stderr) = answer_error.stderr {
-                                    println!("Stderr: {}", stderr);
+                                    println!("Stderr:\n{}", stderr);
                                 };
                             }
                             _ => println!("Answer NOT created! Reason:\n{}", response.text().await?),
@@ -179,6 +188,26 @@ async fn exec_args_with_server_url(args: Args, server_url: &str) -> Result<()> {
                     Err(err) => bail!("Cannot read the specified file! Reason:\n{}", err),
                 },
                 Err(err) => bail!(err),
+            },
+            AnswerAction::Delete {
+                id,
+                username,
+                password,
+            } => {
+                let client = reqwest::Client::new();
+                let response = client
+                    .delete(format!("{}answer/{}", server_url, id))
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await?;
+
+                match response.status() {
+                    StatusCode::NO_CONTENT => println!("Answer deleted successfully"),
+                    StatusCode::FORBIDDEN => println!("Permission for deleting this answer not met!"),
+                    StatusCode::NOT_FOUND => println!("Answer with this ID not found!"),
+                    StatusCode::UNAUTHORIZED => println!("Answer NOT deleted! Invalid credentials."),
+                    _ => println!("Answer NOT deleted! Unrecognized reason."),
+                };
             },
         },
     };

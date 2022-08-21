@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
 
     // Make this configurable later
-    let server_url = "http://localhost:5200/api/v1/";
+    let server_url = "https://codeprobs.herokuapp.com/";
 
     let args = Args::parse();
 
